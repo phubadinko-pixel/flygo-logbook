@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FlyGo Pilot Logbook</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --navy:#0d2440; --navy-2:#143055; --accent:#2f80ed; --accent-2:#56ccf2;
+    --bg:#f4f6fb; --card:#ffffff; --line:#e3e8f0; --text:#1b2733; --muted:#6b7a8d;
+    --good:#1f9d55; --bad:#d64545; --warn:#d9a400;
+    --radius:12px; --shadow:0 1px 3px rgba(13,36,64,.08),0 8px 24px rgba(13,36,64,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--text);font-size:14px;line-height:1.45}
+  header.app{background:linear-gradient(135deg,var(--navy),var(--navy-2));color:#fff;padding:18px 24px;
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  header.app h1{font-size:19px;margin:0;letter-spacing:.3px;display:flex;align-items:center;gap:10px}
+  header.app h1 .badge{font-size:11px;background:rgba(255,255,255,.16);padding:3px 8px;border-radius:20px;font-weight:600}
+  .conn{font-size:12px;display:flex;align-items:center;gap:7px;opacity:.9}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--warn)}
+  .dot.ok{background:#3ddc84}.dot.err{background:#ff6b6b}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 24px 60px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px}
+  .stat{background:var(--card);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow);border:1px solid var(--line)}
+  .stat .label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
+  .stat .value{font-size:26px;font-weight:700;margin-top:4px;color:var(--navy)}
+  .stat .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .currency{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:22px}
+  .curr-card{background:var(--card);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow);
+    border:1px solid var(--line);border-left:4px solid var(--line)}
+  .curr-card.ok{border-left-color:var(--good)}
+  .curr-card.no{border-left-color:var(--bad)}
+  .curr-card .title{font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:space-between}
+  .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
+  .pill.ok{background:#e3f6ec;color:var(--good)}.pill.no{background:#fbe6e6;color:var(--bad)}
+  .curr-card .detail{font-size:12px;color:var(--muted);margin-top:7px}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
+  .toolbar .grow{flex:1 1 auto}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,128,237,.12)}
+  button{font:inherit;cursor:pointer;border:none;border-radius:8px;padding:9px 16px;font-weight:600;transition:.15s}
+  .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#1f6fd6}
+  .btn-ghost{background:#eef2f9;color:var(--navy)}.btn-ghost:hover{background:#e0e7f3}
+  .btn-sm{padding:5px 10px;font-size:12px}
+  .btn-danger{background:#fbe6e6;color:var(--bad)}.btn-danger:hover{background:#f6d2d2}
+  .table-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .table-scroll{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}
+  thead th{background:#f7f9fc;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;
+    text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);position:sticky;top:0}
+  tbody td{padding:10px 12px;border-bottom:1px solid #f0f3f8}
+  tbody tr:hover{background:#f9fbfe}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .empty{padding:46px 20px;text-align:center;color:var(--muted)}
+  .empty .big{font-size:34px;margin-bottom:8px}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(13,36,64,.45);display:none;align-items:flex-start;justify-content:center;
+    padding:30px 16px;overflow-y:auto;z-index:50}
+  .overlay.open{display:flex}
+  .modal{background:#fff;border-radius:16px;width:100%;max-width:760px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal header{background:var(--navy);color:#fff;padding:16px 22px;border-radius:16px 16px 0 0;display:flex;justify-content:space-between;align-items:center}
+  .modal header h2{margin:0;font-size:16px}
+  .modal .body{padding:20px 22px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
+  .grid .span2{grid-column:span 2}.grid .span4{grid-column:span 4}
+  .section-h{grid-column:span 4;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+    color:var(--accent);margin:8px 0 -2px;border-top:1px solid var(--line);padding-top:13px}
+  .section-h:first-child{border-top:none;padding-top:0}
+  .modal .actions{display:flex;justify-content:space-between;align-items:center;gap:10px;
+    padding:16px 22px;border-top:1px solid var(--line);background:#fafbfe;border-radius:0 0 16px 16px;flex-wrap:wrap}
+  .hint{font-size:11px;color:var(--muted)}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;
+    padding:11px 20px;border-radius:10px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;
+    pointer-events:none;transition:.25s;z-index:80}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  .toast.err{background:var(--bad)}
+  @media(max-width:640px){.grid{grid-template-columns:repeat(2,1fr)}.grid .span2,.grid .span4,.section-h{grid-column:span 2}}
+</style>
+</head>
+<body>
+<header class="app">
+  <h1>✈️ FlyGo Pilot Logbook <span class="badge">MVP</span></h1>
+  <div class="conn"><span id="connDot" class="dot"></span><span id="connText">Connecting…</span></div>
+</header>
+
+<div class="wrap">
+  <!-- summary stats -->
+  <div class="stats" id="stats"></div>
+
+  <!-- currency -->
+  <div class="currency" id="currency"></div>
+
+  <!-- toolbar / filters -->
+  <div class="toolbar">
+    <div class="field"><label>From date</label><input type="date" id="fFrom" /></div>
+    <div class="field"><label>To date</label><input type="date" id="fTo" /></div>
+    <div class="field grow"><label>Aircraft (type or reg)</label><input type="text" id="fAircraft" placeholder="e.g. C172 or HS-ABC" /></div>
+    <button class="btn-ghost" id="clearFilters">Clear</button>
+    <button class="btn-ghost" id="exportCsv">⬇ Export CSV</button>
+    <button class="btn-primary" id="addBtn">+ Add Flight</button>
+  </div>
+
+  <!-- table -->
+  <div class="table-card">
+    <div class="table-scroll">
+      <table id="logTable">
+        <thead><tr>
+          <th>Date</th><th>Type</th><th>Reg</th><th>From</th><th>To</th>
+          <th class="num">Total</th><th class="num">Day</th><th class="num">Night</th>
+          <th class="num">PIC</th><th class="num">IFR</th><th class="num">XC</th>
+          <th class="num">Ldg D/N</th><th>Remarks</th><th></th>
+        </tr></thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="emptyState" style="display:none">
+      <div class="big">🛫</div>
+      <div>No flights logged yet. Click <strong>+ Add Flight</strong> to record your first one.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <header><h2 id="modalTitle">Add Flight</h2><button class="btn-ghost btn-sm" id="closeModal">✕</button></header>
+    <div class="body">
+      <form id="flightForm">
+        <input type="hidden" id="fid" />
+        <div class="grid">
+          <div class="section-h">Flight</div>
+          <div class="field span2"><label>Date *</label><input type="date" id="flight_date" required /></div>
+          <div class="field"><label>Aircraft type</label><input type="text" id="aircraft_type" placeholder="C172" list="acTypes" /></div>
+          <div class="field"><label>Registration</label><input type="text" id="aircraft_reg" placeholder="HS-ABC" /></div>
+
+          <div class="field"><label>From</label><input type="text" id="from_airport" placeholder="VTBS" list="airports" autocomplete="off" /></div>
+          <div class="field"><label>To</label><input type="text" id="to_airport" placeholder="VTCC" list="airports" autocomplete="off" /></div>
+          <div class="field"><label>Off-blocks (UTC)</label><input type="datetime-local" id="dep_time" /></div>
+          <div class="field"><label>On-blocks (UTC)</label><input type="datetime-local" id="arr_time" /></div>
+
+          <div class="section-h">Time breakdown (hours) <span class="hint">— use “Auto-calc” to fill Total/Day/Night from times + airports</span></div>
+          <div class="field"><label>Total *</label><input type="number" step="0.1" min="0" id="total_time" required /></div>
+          <div class="field"><label>Day</label><input type="number" step="0.1" min="0" id="day_time" /></div>
+          <div class="field"><label>Night</label><input type="number" step="0.1" min="0" id="night_time" /></div>
+          <div class="field"><label>&nbsp;</label><button type="button" class="btn-ghost" id="autoCalc">⚙ Auto-calc day/night</button></div>
+
+          <div class="field"><label>PIC</label><input type="number" step="0.1" min="0" id="pic_time" /></div>
+          <div class="field"><label>Dual</label><input type="number" step="0.1" min="0" id="dual_time" /></div>
+          <div class="field"><label>SIC / Co-pilot</label><input type="number" step="0.1" min="0" id="sic_time" /></div>
+          <div class="field"><label>Cross-country</label><input type="number" step="0.1" min="0" id="xc_time" /></div>
+          <div class="field"><label>IFR / Instrument</label><input type="number" step="0.1" min="0" id="ifr_time" /></div>
+
+          <div class="section-h">Landings & approaches</div>
+          <div class="field"><label>Day landings</label><input type="number" step="1" min="0" id="day_landings" value="0" /></div>
+          <div class="field"><label>Night landings</label><input type="number" step="1" min="0" id="night_landings" value="0" /></div>
+          <div class="field"><label>Approaches</label><input type="number" step="1" min="0" id="approaches" value="0" /></div>
+
+          <div class="section-h">Notes</div>
+          <div class="field span4"><label>Remarks</label><textarea id="remarks" rows="2" placeholder="Crew, conditions, training notes…"></textarea></div>
+        </div>
+      </form>
+    </div>
+    <div class="actions">
+      <span class="hint" id="calcHint"></span>
+      <div style="display:flex;gap:10px">
+        <button class="btn-ghost" id="cancelBtn" type="button">Cancel</button>
+        <button class="btn-primary" id="saveBtn" type="button">Save Flight</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<datalist id="airports"></datalist>
+<datalist id="acTypes"><option value="C152"><option value="C172"><option value="PA28"><option value="DA40"><option value="DA42"><option value="A320"><option value="A321"><option value="B737"><option value="B738"><option value="ATR72"></datalist>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===========================================================
+   FlyGo Pilot Logbook — MVP
+   Backend: Supabase  |  Day/Night: inline sun-position model
+   =========================================================== */
+
+/* ---- Supabase ---- */
+const SUPABASE_URL = 'https://jgctgtbyoqczbslevgyo.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_crmhq0DTrSay7towHUiwSQ_t2COmK0D';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ---- Airport database (ICAO, IATA, name, lat, lon) ---- */
+const AIRPORTS = [
+  ["VTBS","BKK","Bangkok Suvarnabhumi",13.6900,100.7501],["VTBD","DMK","Bangkok Don Mueang",13.9126,100.6068],
+  ["VTCC","CNX","Chiang Mai",18.7669,98.9626],["VTCT","CEI","Chiang Rai",19.9523,99.8829],
+  ["VTSP","HKT","Phuket",8.1132,98.3169],["VTSG","KBV","Krabi",8.0991,98.9862],
+  ["VTSS","HDY","Hat Yai",6.9332,100.3925],["VTSB","URT","Surat Thani",9.1326,99.1356],
+  ["VTUU","UBP","Ubon Ratchathani",15.2513,104.8700],["VTUK","KKC","Khon Kaen",16.4666,102.7836],
+  ["VTBU","UTP","U-Tapao Rayong",12.6799,101.0050],
+  ["WSSS","SIN","Singapore Changi",1.3592,103.9894],["WMKK","KUL","Kuala Lumpur",2.7456,101.7099],
+  ["VHHH","HKG","Hong Kong",22.3080,113.9185],["RCTP","TPE","Taipei Taoyuan",25.0777,121.2328],
+  ["RJTT","HND","Tokyo Haneda",35.5523,139.7798],["RJAA","NRT","Tokyo Narita",35.7720,140.3929],
+  ["RKSI","ICN","Seoul Incheon",37.4691,126.4505],["ZBAA","PEK","Beijing Capital",40.0801,116.5846],
+  ["ZSPD","PVG","Shanghai Pudong",31.1443,121.8083],["VIDP","DEL","Delhi",28.5562,77.1000],
+  ["VABB","BOM","Mumbai",19.0887,72.8679],["WIII","CGK","Jakarta Soekarno-Hatta",-6.1256,106.6559],
+  ["RPLL","MNL","Manila",14.5086,121.0197],["VVNB","HAN","Hanoi",21.2212,105.8072],
+  ["VVTS","SGN","Ho Chi Minh City",10.8188,106.6520],["VDPP","PNH","Phnom Penh",11.5466,104.8441],
+  ["VLVT","VTE","Vientiane",17.9883,102.5633],["VYYY","RGN","Yangon",16.9073,96.1332],
+  ["OMDB","DXB","Dubai",25.2528,55.3644],["OMAA","AUH","Abu Dhabi",24.4330,54.6511],
+  ["OTHH","DOH","Doha Hamad",25.2731,51.6080],
+  ["EGLL","LHR","London Heathrow",51.4700,-0.4543],["EGKK","LGW","London Gatwick",51.1537,-0.1821],
+  ["LFPG","CDG","Paris Charles de Gaulle",49.0097,2.5479],["EDDF","FRA","Frankfurt",50.0379,8.5622],
+  ["EHAM","AMS","Amsterdam Schiphol",52.3105,4.7683],["LEMD","MAD","Madrid Barajas",40.4983,-3.5676],
+  ["LEBL","BCN","Barcelona",41.2974,2.0833],["LIRF","FCO","Rome Fiumicino",41.8003,12.2389],
+  ["LSZH","ZRH","Zurich",47.4647,8.5492],["LOWW","VIE","Vienna",48.1103,16.5697],
+  ["EDDM","MUC","Munich",48.3538,11.7861],["EKCH","CPH","Copenhagen",55.6180,12.6508],
+  ["ESSA","ARN","Stockholm Arlanda",59.6519,17.9186],["EIDW","DUB","Dublin",53.4213,-6.2701],
+  ["LTFM","IST","Istanbul",41.2753,28.7519],
+  ["KJFK","JFK","New York JFK",40.6413,-73.7781],["KLAX","LAX","Los Angeles",33.9416,-118.4085],
+  ["KORD","ORD","Chicago O'Hare",41.9742,-87.9073],["KATL","ATL","Atlanta",33.6407,-84.4277],
+  ["KSFO","SFO","San Francisco",37.6213,-122.3790],["KDFW","DFW","Dallas Fort Worth",32.8998,-97.0403],
+  ["KSEA","SEA","Seattle Tacoma",47.4502,-122.3088],["KMIA","MIA","Miami",25.7959,-80.2870],
+  ["KBOS","BOS","Boston Logan",42.3656,-71.0096],["KDEN","DEN","Denver",39.8561,-104.6737],
+  ["KLAS","LAS","Las Vegas",36.0840,-115.1537],["KPHX","PHX","Phoenix Sky Harbor",33.4342,-112.0116],
+  ["CYYZ","YYZ","Toronto Pearson",43.6777,-79.6248],["CYVR","YVR","Vancouver",49.1967,-123.1815],
+  ["YSSY","SYD","Sydney",-33.9399,151.1753],["YMML","MEL","Melbourne",-37.6690,144.8410],
+  ["YBBN","BNE","Brisbane",-27.3842,153.1175],["NZAA","AKL","Auckland",-37.0082,174.7850],
+  ["HECA","CAI","Cairo",30.1219,31.4056],["FAOR","JNB","Johannesburg",-26.1392,28.2460],
+  ["FACT","CPT","Cape Town",-33.9690,18.6021],["SBGR","GRU","Sao Paulo Guarulhos",-23.4356,-46.4731],
+  ["SAEZ","EZE","Buenos Aires Ezeiza",-34.8222,-58.5358],["SCEL","SCL","Santiago",-33.3930,-70.7858]
+];
+const apByCode = {};
+AIRPORTS.forEach(a=>{ apByCode[a[0]]=a; apByCode[a[1]]=a; });
+function lookupAirport(code){ if(!code) return null; return apByCode[code.trim().toUpperCase()]||null; }
+
+/* populate datalist */
+(function(){
+  const dl=document.getElementById('airports');
+  AIRPORTS.slice().sort((a,b)=>a[0]<b[0]?-1:1).forEach(a=>{
+    const o=document.createElement('option'); o.value=a[0]; o.label=a[1]+" — "+a[2]; dl.appendChild(o);
+  });
+})();
+
+/* ---- Compact sun-position model (after SunCalc, V. Agafonkin, BSD) ---- */
+const SunCalc=(function(){
+  const rad=Math.PI/180, dayMs=864e5, J1970=2440588, J2000=2451545, e=rad*23.4397;
+  const toDays=d=>(d.valueOf()/dayMs-0.5+J1970)-J2000;
+  const ra=(l,b)=>Math.atan2(Math.sin(l)*Math.cos(e)-Math.tan(b)*Math.sin(e),Math.cos(l));
+  const dec=(l,b)=>Math.asin(Math.sin(b)*Math.cos(e)+Math.cos(b)*Math.sin(e)*Math.sin(l));
+  const alt=(H,phi,d)=>Math.asin(Math.sin(phi)*Math.sin(d)+Math.cos(phi)*Math.cos(d)*Math.cos(H));
+  const sidereal=(d,lw)=>rad*(280.16+360.9856235*d)-lw;
+  const M=d=>rad*(357.5291+0.98560028*d);
+  const eclLon=m=>{const C=rad*(1.9148*Math.sin(m)+0.02*Math.sin(2*m)+0.0003*Math.sin(3*m));return m+C+rad*102.9372+Math.PI;};
+  return {getAltitude:function(date,lat,lng){
+    const lw=rad*-lng, phi=rad*lat, d=toDays(date), m=M(d), L=eclLon(m), de=dec(L,0), H=sidereal(d,lw)-ra(L,0);
+    return alt(H,phi,de); // radians
+  }};
+})();
+const HORIZON=-0.833*Math.PI/180; // standard sunrise/sunset (sun's upper limb on horizon)
+
+/* compute day/night split by sampling the great-circle-ish path minute by minute */
+function computeDayNight(depISO, arrISO, fromCode, toCode){
+  const dep=parseUTC(depISO), arr=parseUTC(arrISO);
+  if(!dep||!arr) return {error:"Enter both off-blocks and on-blocks times (UTC)."};
+  let totalMin=(arr-dep)/60000;
+  if(totalMin<=0) return {error:"On-blocks time must be after off-blocks time."};
+  const a=lookupAirport(fromCode), b=lookupAirport(toCode);
+  if(!a||!b) return {error:"Both From and To must be known airports (for sun position).", total:round2(totalMin/60)};
+  let nightMin=0; const step=1; // minutes
+  for(let m=0;m<totalMin;m+=step){
+    const dt=Math.min(step,totalMin-m);
+    const f=(m+dt/2)/totalMin;
+    const lat=a[3]+(b[3]-a[3])*f;
+    const lon=a[4]+(b[4]-a[4])*f;
+    const t=new Date(dep.getTime()+(m+dt/2)*60000);
+    if(SunCalc.getAltitude(t,lat,lon)<HORIZON) nightMin+=dt;
+  }
+  const total=totalMin/60, night=nightMin/60;
+  return {total:round2(total), day:round2(total-night), night:round2(night),
+          from:a[0], to:b[0]};
+}
+
+/* ---- helpers ---- */
+function parseUTC(v){ if(!v) return null; const s=v.length===16?v+":00Z":(v.endsWith("Z")?v:v+"Z"); const d=new Date(s); return isNaN(d)?null:d; }
+function round2(n){ return Math.round((n+Number.EPSILON)*100)/100; }
+function num(id){ const v=parseFloat(document.getElementById(id).value); return isNaN(v)?0:v; }
+function intv(id){ const v=parseInt(document.getElementById(id).value,10); return isNaN(v)?0:v; }
+function val(id){ return document.getElementById(id).value.trim(); }
+function fmt(n){ return (n||0).toFixed(1); }
+function toast(msg,isErr){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast show'+(isErr?' err':''); setTimeout(()=>t.className='toast'+(isErr?' err':''),2600); }
+
+/* ---- state ---- */
+let FLIGHTS=[];
+
+/* ---- connection + load ---- */
+async function loadFlights(){
+  setConn('warn','Loading…');
+  const {data,error}=await sb.from('flights').select('*').order('flight_date',{ascending:false}).order('created_at',{ascending:false});
+  if(error){ setConn('err','Connection error'); toast('Could not load: '+error.message,true); console.error(error); return; }
+  FLIGHTS=data||[];
+  setConn('ok','Connected — '+FLIGHTS.length+' flight'+(FLIGHTS.length===1?'':'s'));
+  render();
+}
+function setConn(state,text){
+  const dot=document.getElementById('connDot'); dot.className='dot'+(state==='ok'?' ok':state==='err'?' err':'');
+  document.getElementById('connText').textContent=text;
+}
+
+/* ---- filtering ---- */
+function filtered(){
+  const from=val('fFrom'), to=val('fTo'), ac=val('fAircraft').toUpperCase();
+  return FLIGHTS.filter(f=>{
+    if(from && f.flight_date<from) return false;
+    if(to && f.flight_date>to) return false;
+    if(ac){ const hay=((f.aircraft_type||'')+' '+(f.aircraft_reg||'')).toUpperCase(); if(!hay.includes(ac)) return false; }
+    return true;
+  });
+}
+
+/* ---- render ---- */
+function render(){
+  const rows=filtered();
+  renderStats(rows);
+  renderCurrency();
+  renderTable(rows);
+}
+
+function sum(rows,key){ return rows.reduce((s,f)=>s+(parseFloat(f[key])||0),0); }
+function sumi(rows,key){ return rows.reduce((s,f)=>s+(parseInt(f[key],10)||0),0); }
+
+function renderStats(rows){
+  const stats=[
+    {label:'Total time',value:fmt(sum(rows,'total_time')),sub:rows.length+' flights'},
+    {label:'PIC',value:fmt(sum(rows,'pic_time'))},
+    {label:'Night',value:fmt(sum(rows,'night_time'))},
+    {label:'IFR / Instr',value:fmt(sum(rows,'ifr_time'))},
+    {label:'Cross-country',value:fmt(sum(rows,'xc_time'))},
+    {label:'Landings',value:(sumi(rows,'day_landings')+sumi(rows,'night_landings')),sub:sumi(rows,'day_landings')+' day · '+sumi(rows,'night_landings')+' night'}
+  ];
+  document.getElementById('stats').innerHTML=stats.map(s=>
+    `<div class="stat"><div class="label">${s.label}</div><div class="value">${s.value}</div>${s.sub?`<div class="sub">${s.sub}</div>`:''}</div>`).join('');
+}
+
+/* 90-day takeoff/landing currency (uses ALL flights, not filtered) */
+function renderCurrency(){
+  const today=new Date(); const cut=new Date(today.getTime()-90*864e5);
+  const cutStr=cut.toISOString().slice(0,10);
+  let dayL=0,nightL=0;
+  FLIGHTS.forEach(f=>{ if(f.flight_date>=cutStr){ dayL+=parseInt(f.day_landings,10)||0; nightL+=parseInt(f.night_landings,10)||0; }});
+  const cards=[
+    {title:'Day currency',ok:dayL>=3,detail:`${dayL} landing${dayL===1?'':'s'} in last 90 days · need 3 to carry passengers (day).`},
+    {title:'Night currency',ok:nightL>=3,detail:`${nightL} night landing${nightL===1?'':'s'} in last 90 days · need 3 to carry passengers (night).`}
+  ];
+  document.getElementById('currency').innerHTML=cards.map(c=>
+    `<div class="curr-card ${c.ok?'ok':'no'}"><div class="title">${c.title}<span class="pill ${c.ok?'ok':'no'}">${c.ok?'CURRENT':'NOT CURRENT'}</span></div><div class="detail">${c.detail}</div></div>`).join('');
+}
+
+function renderTable(rows){
+  const body=document.getElementById('logBody'), empty=document.getElementById('emptyState');
+  const tableCard=document.getElementById('logTable');
+  if(rows.length===0){ body.innerHTML=''; empty.style.display='block'; tableCard.style.display='none'; return; }
+  empty.style.display='none'; tableCard.style.display='';
+  body.innerHTML=rows.map(f=>`<tr>
+    <td>${f.flight_date||''}</td><td>${esc(f.aircraft_type)}</td><td>${esc(f.aircraft_reg)}</td>
+    <td>${esc(f.from_airport)}</td><td>${esc(f.to_airport)}</td>
+    <td class="num">${fmt(+f.total_time)}</td><td class="num">${fmt(+f.day_time)}</td><td class="num">${fmt(+f.night_time)}</td>
+    <td class="num">${fmt(+f.pic_time)}</td><td class="num">${fmt(+f.ifr_time)}</td><td class="num">${fmt(+f.xc_time)}</td>
+    <td class="num">${(f.day_landings||0)}/${(f.night_landings||0)}</td>
+    <td title="${esc(f.remarks)}">${esc((f.remarks||'').slice(0,32))}${(f.remarks||'').length>32?'…':''}</td>
+    <td style="white-space:nowrap">
+      <button class="btn-ghost btn-sm" onclick="editFlight('${f.id}')">Edit</button>
+      <button class="btn-danger btn-sm" onclick="deleteFlight('${f.id}')">Del</button>
+    </td></tr>`).join('');
+}
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---- modal ---- */
+const overlay=document.getElementById('overlay');
+function openModal(edit){ document.getElementById('modalTitle').textContent=edit?'Edit Flight':'Add Flight'; document.getElementById('calcHint').textContent=''; overlay.classList.add('open'); }
+function closeModal(){ overlay.classList.remove('open'); }
+function resetForm(){
+  document.getElementById('flightForm').reset();
+  document.getElementById('fid').value='';
+  document.getElementById('flight_date').value=new Date().toISOString().slice(0,10);
+  ['day_landings','night_landings','approaches'].forEach(id=>document.getElementById(id).value=0);
+}
+function fillForm(f){
+  const set=(id,v)=>document.getElementById(id).value=(v==null?'':v);
+  set('fid',f.id); set('flight_date',f.flight_date); set('aircraft_type',f.aircraft_type); set('aircraft_reg',f.aircraft_reg);
+  set('from_airport',f.from_airport); set('to_airport',f.to_airport);
+  set('dep_time',f.dep_time?f.dep_time.slice(0,16):''); set('arr_time',f.arr_time?f.arr_time.slice(0,16):'');
+  ['total_time','day_time','night_time','pic_time','dual_time','sic_time','xc_time','ifr_time'].forEach(k=>set(k,f[k]));
+  ['day_landings','night_landings','approaches'].forEach(k=>set(k,f[k]));
+  set('remarks',f.remarks);
+}
+window.editFlight=function(id){ const f=FLIGHTS.find(x=>x.id===id); if(!f) return; resetForm(); fillForm(f); openModal(true); };
+window.deleteFlight=async function(id){
+  if(!confirm('Delete this flight permanently?')) return;
+  const {error}=await sb.from('flights').delete().eq('id',id);
+  if(error){ toast('Delete failed: '+error.message,true); return; }
+  toast('Flight deleted'); await loadFlights();
+};
+
+/* auto-calc button */
+document.getElementById('autoCalc').addEventListener('click',()=>{
+  const r=computeDayNight(val('dep_time'),val('arr_time'),val('from_airport'),val('to_airport'));
+  const hint=document.getElementById('calcHint');
+  if(r.error){
+    if(r.total!=null){ document.getElementById('total_time').value=r.total; }
+    hint.textContent='⚠ '+r.error; hint.style.color='var(--bad)'; return;
+  }
+  document.getElementById('total_time').value=r.total;
+  document.getElementById('day_time').value=r.day;
+  document.getElementById('night_time').value=r.night;
+  hint.style.color='var(--muted)';
+  hint.textContent=`✓ ${r.from}→${r.to}: ${r.total}h total = ${r.day}h day + ${r.night}h night`;
+});
+
+/* save */
+document.getElementById('saveBtn').addEventListener('click',async()=>{
+  const date=val('flight_date'); const total=num('total_time');
+  if(!date){ toast('Date is required',true); return; }
+  if(total<=0){ toast('Total time must be greater than 0',true); return; }
+  const row={
+    flight_date:date,
+    aircraft_type:val('aircraft_type')||null, aircraft_reg:val('aircraft_reg')||null,
+    from_airport:val('from_airport').toUpperCase()||null, to_airport:val('to_airport').toUpperCase()||null,
+    dep_time:parseUTC(val('dep_time'))?parseUTC(val('dep_time')).toISOString():null,
+    arr_time:parseUTC(val('arr_time'))?parseUTC(val('arr_time')).toISOString():null,
+    total_time:total, day_time:num('day_time'), night_time:num('night_time'),
+    pic_time:num('pic_time'), dual_time:num('dual_time'), sic_time:num('sic_time'),
+    xc_time:num('xc_time'), ifr_time:num('ifr_time'),
+    day_landings:intv('day_landings'), night_landings:intv('night_landings'), approaches:intv('approaches'),
+    remarks:val('remarks')||null
+  };
+  const id=val('fid');
+  let error;
+  if(id){ ({error}=await sb.from('flights').update(row).eq('id',id)); }
+  else  { ({error}=await sb.from('flights').insert(row)); }
+  if(error){ toast('Save failed: '+error.message,true); console.error(error); return; }
+  closeModal(); toast(id?'Flight updated':'Flight added'); await loadFlights();
+});
+
+/* CSV export */
+document.getElementById('exportCsv').addEventListener('click',()=>{
+  const rows=filtered();
+  if(rows.length===0){ toast('Nothing to export',true); return; }
+  const cols=['flight_date','aircraft_type','aircraft_reg','from_airport','to_airport','dep_time','arr_time',
+    'total_time','day_time','night_time','pic_time','dual_time','sic_time','xc_time','ifr_time',
+    'day_landings','night_landings','approaches','remarks'];
+  const head=['Date','Type','Reg','From','To','OffBlocks(UTC)','OnBlocks(UTC)','Total','Day','Night','PIC','Dual','SIC','XC','IFR','LdgDay','LdgNight','Approaches','Remarks'];
+  const csv=[head.join(',')].concat(rows.map(f=>cols.map(c=>{
+    let v=f[c]==null?'':String(f[c]);
+    if(/[",\n]/.test(v)) v='"'+v.replace(/"/g,'""')+'"';
+    return v;
+  }).join(','))).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download='pilot_logbook_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  toast('Exported '+rows.length+' flights');
+});
+
+/* wiring */
+document.getElementById('addBtn').addEventListener('click',()=>{ resetForm(); openModal(false); });
+document.getElementById('closeModal').addEventListener('click',closeModal);
+document.getElementById('cancelBtn').addEventListener('click',closeModal);
+overlay.addEventListener('click',e=>{ if(e.target===overlay) closeModal(); });
+['fFrom','fTo','fAircraft'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+document.getElementById('clearFilters').addEventListener('click',()=>{ ['fFrom','fTo','fAircraft'].forEach(id=>document.getElementById(id).value=''); render(); });
+
+/* go */
+loadFlights();
+</script>
+</body>
+</html>
